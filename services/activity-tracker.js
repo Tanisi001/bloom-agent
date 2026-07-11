@@ -99,23 +99,24 @@ export function computeDrainScore(activeMinutes, isOffHours, messageCount = 0, g
 
 /**
  * Fetch today's GitHub contributions for a user.
- * Uses the MCP GitHub tools if available.
- * Returns count or 0 on failure (logs warning).
+ * Uses githubUsername if available, otherwise email.
  *
- * @param {string} githubUsername
+ * @param {object} userInfo - { email, githubUsername }
  * @param {function} callMcpTool - MCP tool caller
  * @returns {Promise<{commits: number, prs: number}>}
  */
-export async function fetchGithubActivity(githubUsername, callMcpTool) {
-  if (!githubUsername || !callMcpTool) return { commits: 0, prs: 0 };
+export async function fetchGithubActivity(userInfo, callMcpTool) {
+  if (!callMcpTool) return { commits: 0, prs: 0 };
+  const author = userInfo?.githubUsername || userInfo?.email;
+  if (!author) return { commits: 0, prs: 0 };
 
   try {
     const since = new Date(Date.now() - 24 * 3600000).toISOString();
-    const result = await callMcpTool('list_commits', { author: githubUsername, since });
+    const result = await callMcpTool('list_commits', { author, since });
     const commits = (result.match(/commit/gi) || []).length || 0;
     return { commits, prs: 0 };
   } catch (e) {
-    console.warn(`[activity] GitHub fetch failed for ${githubUsername}: ${e.message}`);
+    console.warn(`[activity] GitHub fetch failed for ${author}: ${e.message}`);
     return { commits: 0, prs: 0 };
   }
 }
@@ -123,29 +124,26 @@ export async function fetchGithubActivity(githubUsername, callMcpTool) {
 // ======================== JIRA ACTIVITY FETCH ========================
 
 /**
- * Fetch today's Jira activity for a user.
- * Uses the MCP Jira tools if available.
- * Returns count or 0 on failure (logs warning).
+ * Fetch today's Jira activity for a user using their email.
  *
- * @param {string} jiraEmail
+ * @param {object} userInfo - { email }
  * @param {function} callMcpTool - MCP tool caller
  * @returns {Promise<{ticketUpdates: number}>}
  */
-export async function fetchJiraActivity(jiraEmail, callMcpTool) {
-  if (!jiraEmail || !callMcpTool) return { ticketUpdates: 0 };
+export async function fetchJiraActivity(userInfo, callMcpTool) {
+  if (!callMcpTool || !userInfo?.email) return { ticketUpdates: 0 };
 
   try {
     const today = new Date().toISOString().split('T')[0];
     const result = await callMcpTool('jira_get', {
-      path: `/rest/api/3/search/jql`,
-      query: { jql: `assignee="${jiraEmail}" AND updated >= "${today}"` },
+      path: '/rest/api/3/search/jql',
+      query: { jql: `assignee="${userInfo.email}" AND updated >= "${today}"` },
     });
-    // Parse result for issue count
     const parsed = typeof result === 'string' ? result : JSON.stringify(result);
     const match = parsed.match(/"total"\s*:\s*(\d+)/);
     return { ticketUpdates: match ? parseInt(match[1]) : 0 };
   } catch (e) {
-    console.warn(`[activity] Jira fetch failed for ${jiraEmail}: ${e.message}`);
+    console.warn(`[activity] Jira fetch failed for ${userInfo.email}: ${e.message}`);
     return { ticketUpdates: 0 };
   }
 }
@@ -158,7 +156,7 @@ export async function fetchJiraActivity(jiraEmail, callMcpTool) {
  *
  * @param {string} teamId
  * @param {string} userId
- * @param {object} [mcpTools] - { callMcpTool, githubUsername, jiraEmail }
+ * @param {object} [mcpTools] - { callMcpTool, userInfo: { email, name, githubUsername } }
  * @returns {Promise<object>}
  */
 export async function getUserActivitySummary(teamId, userId, mcpTools = null) {
@@ -168,9 +166,9 @@ export async function getUserActivitySummary(teamId, userId, mcpTools = null) {
   let github = { commits: 0, prs: 0 };
   let jira = { ticketUpdates: 0 };
 
-  if (mcpTools?.callMcpTool) {
-    github = await fetchGithubActivity(mcpTools.githubUsername, mcpTools.callMcpTool);
-    jira = await fetchJiraActivity(mcpTools.jiraEmail, mcpTools.callMcpTool);
+  if (mcpTools?.callMcpTool && mcpTools?.userInfo) {
+    github = await fetchGithubActivity(mcpTools.userInfo, mcpTools.callMcpTool);
+    jira = await fetchJiraActivity(mcpTools.userInfo, mcpTools.callMcpTool);
   }
 
   return {

@@ -43,8 +43,7 @@ export async function generateTeamReport(client, teamId) {
     try {
       const mcpTools = {
         callMcpTool,
-        githubUsername: userData.githubUsername || null,
-        jiraEmail: userData.email || null,
+        userInfo: { email: userData.email, name: userData.name, githubUsername: userData.githubUsername },
       };
       userActivities[userId] = await getUserActivitySummary(teamId, userId, mcpTools);
     } catch (e) {

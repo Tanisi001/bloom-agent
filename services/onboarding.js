@@ -89,31 +89,40 @@ export async function greetTeamMembers(client, teamId, channelId) {
   try {
     const result = await client.conversations.members({ channel: channelId });
     members = result.members || [];
+    console.log(`[onboarding] Channel <#${channelId}> has ${members.length} members`);
   } catch (e) {
     console.error(`[onboarding] Failed to get channel members: ${e.message}`);
     return;
   }
 
-  // Get installer ID to skip them from greeting
+  // Get installer ID to skip them entirely
   const { getTeamConfig } = await import('./firebase.js');
   const teamConfig = await getTeamConfig(teamId);
   const installerId = teamConfig.installerId;
+  console.log(`[onboarding] Installer is ${installerId}, will skip from greeting`);
 
   const greetedUsers = [];
 
   for (const userId of members) {
-    // Skip the installer — they get a summary instead
-    if (userId === installerId) continue;
+    // Skip the installer — they already got their own onboarding DM
+    if (userId === installerId) {
+      console.log(`[onboarding] Skipping installer ${userId}`);
+      continue;
+    }
 
     let userEmail = null;
     let userName = null;
     try {
       const info = await client.users.info({ user: userId });
-      if (info.user.is_bot) continue;
+      if (info.user.is_bot) {
+        console.log(`[onboarding] Skipping bot ${userId}`);
+        continue;
+      }
       userEmail = info.user.profile?.email || null;
       userName = info.user.real_name || info.user.name || null;
     } catch { continue; }
 
+    // Save user in Firebase (NOT the installer)
     await saveUserData(teamId, userId, {
       optedOut: true,
       email: userEmail,
@@ -121,14 +130,15 @@ export async function greetTeamMembers(client, teamId, channelId) {
       lastActiveAt: null,
       activeMinutes: 0,
       lastNudgeAt: null,
-      nudgeThresholdMinutes: 30,
     });
 
+    // Send opt-in greeting DM
+    console.log(`[onboarding] Greeting ${userName} (${userId})`);
     await sendGreeting(client, userId);
     greetedUsers.push({ userId, name: userName, email: userEmail });
   }
 
-  // Send summary to installer
+  // Send summary to installer with user list
   if (installerId && greetedUsers.length > 0) {
     const userList = greetedUsers.map((u) => `\u2022 <@${u.userId}> (${u.email || 'no email'})`).join('\n');
     try {
@@ -147,6 +157,8 @@ export async function greetTeamMembers(client, teamId, channelId) {
     } catch (e) {
       console.error(`[onboarding] Failed to notify installer: ${e.message}`);
     }
+  } else if (greetedUsers.length === 0) {
+    console.log(`[onboarding] No users to greet (all bots or only installer in channel)`);
   }
 }
 
@@ -157,12 +169,24 @@ export async function greetTeamMembers(client, teamId, channelId) {
  */
 async function sendGreeting(client, userId) {
   try {
-    const { quote, body } = await generateGreeting();
+    let quote = '"Take care of your body. It is the only place you have to live." \u2014 Jim Rohn';
+    let body = "Your team just set up *Bloom*! I'll gently remind you to hydrate, stretch, and breathe based on your activity. No tracking of what you say \u2014 just when you're online.";
+
+    try {
+      const generated = await generateGreeting();
+      if (generated.quote) quote = generated.quote;
+      if (generated.body) body = generated.body;
+    } catch (e) {
+      console.warn(`[onboarding] Gemini greeting failed, using fallback: ${e.message}`);
+    }
+
+    console.log(`[onboarding] Opening DM with ${userId}...`);
     const dm = await client.conversations.open({ users: userId });
+    console.log(`[onboarding] Sending greeting to ${userId} in channel ${dm.channel.id}...`);
 
     await client.chat.postMessage({
       channel: dm.channel.id,
-      text: "Your team just enabled Wellness Buddy!",
+      text: "Your team just enabled Bloom!",
       blocks: [
         { type: 'header', text: { type: 'plain_text', text: 'Hey there, superstar!' } },
         { type: 'section', text: { type: 'mrkdwn', text: `_${quote}_` } },
@@ -178,6 +202,7 @@ async function sendGreeting(client, userId) {
         { type: 'context', elements: [{ type: 'mrkdwn', text: `_You can change your mind anytime by saying "opt out" or "opt in"._` }] },
       ],
     });
+    console.log(`[onboarding] Greeting sent to ${userId} successfully`);
   } catch (e) {
     console.error(`[onboarding] Failed to greet ${userId}: ${e.message}`);
   }

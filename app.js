@@ -47,7 +47,30 @@ app.action('wellness_opt_in', async ({ ack, body, client }) => {
     channel: body.channel.id,
     text: "Awesome! I'll keep an eye on your wellness. You're in good hands!",
   });
+  // Ask for GitHub username
+  await client.chat.postMessage({
+    channel: body.channel.id,
+    text: "One quick thing — what's your GitHub username? This helps me track your overall activity better.",
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: "One quick thing \u2014 what's your *GitHub username*? This helps me understand your overall workload better." } },
+      {
+        type: 'actions',
+        elements: [
+          { type: 'button', text: { type: 'plain_text', text: "Skip for now" }, action_id: 'github_skip' },
+        ],
+      },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: '_Just reply with your GitHub username (e.g. "octocat") or click Skip._' }] },
+    ],
+  });
   if (global.startWellnessCron) global.startWellnessCron();
+});
+
+app.action('github_skip', async ({ ack, body, client }) => {
+  await ack();
+  await client.chat.postMessage({
+    channel: body.channel.id,
+    text: "No problem! You can always tell me later by saying \"my github is username\".",
+  });
 });
 
 app.action('wellness_opt_out', async ({ ack, body, client }) => {
@@ -125,9 +148,13 @@ app.action('wellness_not_done', async ({ ack, body, client }) => {
 app.event('app_home_opened', async ({ event, context, client }) => {
   const teamId = context.teamId || 'default';
   const config = await getTeamConfig(teamId);
+
+  // Only onboard if NO installer has been set yet (first time only)
+  // And only if the user opening is the first one (they become the installer)
   if (!config.installerId) {
     await onboardInstaller(client, event.user, teamId);
   }
+  // Do NOT send configure prompts to other users who open App Home
 });
 
 // ======================== CONFIGURE COMPLETION HOOK ========================

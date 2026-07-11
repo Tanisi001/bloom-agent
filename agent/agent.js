@@ -64,6 +64,12 @@ then retry with the correct key.
 - To list ALL issues across all projects: use JQL "order by created DESC" with no project filter.
 ALWAYS use these tools when users ask about Jira. Never say you can't access Jira.
 
+IMPORTANT: When searching for a team member's Jira activity: \
+1. Use bloom_get_team_members to get their email addresses. \
+2. ALWAYS use email in JQL assignee queries: assignee="user@email.com" \
+3. NEVER search by display name — Jira requires email or account ID for assignee searches. \
+4. For team-wide searches, iterate through each member's email.
+
 ## GITHUB TOOLS
 You have access to GitHub tools that can interact with repositories, issues, pull requests, \
 and code. Available tools include: list_commits (supports author and since/until filters), \
@@ -73,7 +79,13 @@ commits, or anything GitHub-related. \
 ALWAYS try using tool parameters to filter results. Never say you can't filter by author or date \
 — use the 'author' and 'since' parameters on list_commits. \
 To find commits across all repos for a user: first use search_repositories to find their repos, \
-then call list_commits with the author filter on each repo. Never say you cannot do cross-repo searches.
+then call list_commits with the author filter on each repo. Never say you cannot do cross-repo searches. \
+\
+IMPORTANT: When looking up a team member's GitHub activity: \
+1. Use bloom_get_team_members to get their email addresses. \
+2. Use the email as the author filter in list_commits (GitHub commits are linked to email). \
+3. NEVER say you cannot find a user — always use their email to search. \
+4. For team lookups, iterate through each member's email individually.
 
 ## OUTLOOK CALENDAR TOOLS
 You have access to Outlook Calendar tools (outlook_get_events, outlook_create_event). \
@@ -100,6 +112,12 @@ When a user says "my hours are X to Y":
 ### OPT IN/OUT (Any user)
 When someone says "opt out" or "opt in":
 1. Call bloom_opt_status.
+
+### GITHUB USERNAME
+When a user provides their GitHub username (e.g. "my github is octocat", "octocat", "github: octocat", \
+or any short reply that looks like a username right after being asked):
+1. Call bloom_set_github with the username.
+2. Confirm it was saved.
 
 ### PRIVACY RULES (CRITICAL)
 - NEVER reveal individual drain scores, active minutes, or nudge history.
@@ -263,6 +281,20 @@ const BLOOM_TOOLS = [
       type: 'object',
       properties: { opted_out: { type: 'boolean', description: 'true=opt out, false=opt in' } },
       required: ['opted_out'],
+    },
+  },
+  {
+    name: 'bloom_get_team_members',
+    description: 'Get all registered team members with their emails and names. Use this to look up GitHub/Jira activity by email or name.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'bloom_set_github',
+    description: "Save the current user's GitHub username. Called when user says 'my github is X' or provides their username.",
+    parameters: {
+      type: 'object',
+      properties: { github_username: { type: 'string', description: 'GitHub username (e.g. octocat)' } },
+      required: ['github_username'],
     },
   },
 ];
@@ -449,7 +481,7 @@ export async function runAgent(text, history = [], deps = undefined) {
   // Loop to handle tool calls (max 10 iterations to prevent runaway)
   for (let i = 0; i < 10; i++) {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-3.1-flash-lite',
       config: { systemInstruction: SYSTEM_PROMPT, tools },
       contents,
     });
@@ -563,6 +595,20 @@ async function executeBloomTool(name, args, deps) {
       await updateUserData(teamId, deps.userId, { optedOut: args.opted_out });
       if (!args.opted_out && global.startWellnessCron) global.startWellnessCron();
       return args.opted_out ? 'Opted out of wellness tracking.' : 'Opted in to wellness tracking.';
+    }
+
+    case 'bloom_get_team_members': {
+      const { getAllUsers } = await import('../services/firebase.js');
+      const users = await getAllUsers(teamId);
+      if (!users || Object.keys(users).length === 0) return 'No team members registered yet.';
+      const members = Object.entries(users).map(([id, u]) => `${u.name || id} (email: ${u.email || 'unknown'}, github: ${u.githubUsername || 'not set'}, slack: <@${id}>)`);
+      return `Team members:\n${members.join('\n')}`;
+    }
+
+    case 'bloom_set_github': {
+      if (!deps?.userId) return 'No user context.';
+      await updateUserData(teamId, deps.userId, { githubUsername: args.github_username });
+      return `GitHub username saved: ${args.github_username}. I'll use this to track your contributions.`;
     }
 
     default:
