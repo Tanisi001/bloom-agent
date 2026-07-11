@@ -87,7 +87,7 @@ export async function connectMcp() {
           ...config.env,
         },
       });
-      const client = new Client({ name: `tanisi-agent-${config.name}`, version: '0.1.0' });
+      const client = new Client({ name: `bloom-agent-${config.name}`, version: '1.0.0' });
       await client.connect(transport);
 
       const { tools } = await client.listTools();

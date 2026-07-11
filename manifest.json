@@ -1,11 +1,18 @@
 {
   "display_information": {
-    "name": "tanisi-agent"
+    "name": "Bloom",
+    "description": "Your team's wellness buddy — mood insights, break reminders, and good vibes.",
+    "background_color": "#2eb67d"
   },
   "features": {
     "assistant_view": {
-      "assistant_description": "Hi, I am an agent built using Bolt for JavaScript. I am here to help you out!",
-      "suggested_prompts": []
+      "assistant_description": "Hi! I'm Bloom, your team's wellness buddy. I track mood, nudge breaks, and keep your team healthy and productive.",
+      "suggested_prompts": [
+        { "title": "Team mood", "message": "What's the team mood?" },
+        { "title": "Configure", "message": "Configure #team-channel" },
+        { "title": "My hours", "message": "My working hours are 9am to 6pm" },
+        { "title": "Opt out", "message": "Opt me out of wellness tracking" }
+      ]
     },
     "app_home": {
       "home_tab_enabled": true,
@@ -13,7 +20,7 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "tanisi-agent",
+      "display_name": "Bloom",
       "always_online": true
     }
   },

@@ -1,6 +1,6 @@
 {
-  "name": "tanisi-agent",
-  "version": "0.1.0",
+  "name": "bloom-agent",
+  "version": "1.0.0",
   "type": "module",
   "license": "MIT",
   "scripts": {
