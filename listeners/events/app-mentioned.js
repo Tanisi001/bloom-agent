@@ -41,7 +41,7 @@ export async function handleAppMentioned({ client, context, event, logger, say, 
     const existingHistory = sessionStore.getHistory(channelId, threadTs) ?? [];
 
     // Run the agent with deps for tool access
-    const deps = { client, userId, channelId, threadTs, messageTs: event.ts, userToken: context.userToken };
+    const deps = { client, userId, channelId, threadTs, messageTs: event.ts, userToken: context.userToken, teamId: context.teamId || event.team || 'default', originalText: text };
     const { responseText, history: newHistory } = await runAgent(cleanedText, existingHistory, deps);
 
     // Stream response in thread with feedback buttons

@@ -1,11 +1,13 @@
 import { GoogleGenAI } from '@google/genai';
 import { callMcpTool, connectMcp, toGeminiFunctionDeclarations } from '../mcp-client/index.js';
+import { getTeamConfig, updateTeamConfig, updateUserData } from '../services/firebase.js';
+import { generateTeamReport } from '../services/team-report.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const SYSTEM_PROMPT = `\
-You are a friendly Slack assistant. You help people by answering questions, \
-having conversations, and being generally useful in Slack.
+You are Bloom \u{1F331} \u2014 a friendly Slack assistant and wellness buddy. You help people by answering questions, \
+having conversations, managing their tools, and taking care of their wellbeing.
 
 ## PERSONALITY
 - Friendly, helpful, and approachable
@@ -67,7 +69,34 @@ then call list_commits with the author filter on each repo. Never say you cannot
 ## OUTLOOK CALENDAR TOOLS
 You have access to Outlook Calendar tools (outlook_get_events, outlook_create_event). \
 Use them when users ask about their schedule, meetings, availability, or calendar events. \
-ALWAYS use these tools for calendar-related requests.`;
+ALWAYS use these tools for calendar-related requests.
+
+## BLOOM WELLNESS FEATURES
+You are also a team wellness buddy. Key capabilities:
+
+### CONFIGURATION (SDM/Installer only)
+When asked to configure/set up a team channel:
+1. Call bloom_update_config with channel_id or channel_name.
+2. Extract channel from <#C07ABC|name> format or resolve by name.
+3. Optionally set team working hours (e.g. "9am to 6pm" -> start:9, end:18).
+
+### ON-DEMAND SENTIMENT (Anyone can ask)
+When asked "what's the mood?", "team sentiment", "how's the team?":
+1. Call bloom_generate_sentiment. It reads the channel and returns a rich report.
+
+### WORKING HOURS (Any user)
+When a user says "my hours are X to Y":
+1. Call bloom_set_working_hours with parsed hours.
+
+### OPT IN/OUT (Any user)
+When someone says "opt out" or "opt in":
+1. Call bloom_opt_status.
+
+### PRIVACY RULES (CRITICAL)
+- NEVER reveal individual drain scores, active minutes, or nudge history.
+- Team mood reports analyze PUBLIC channel messages only.
+- Show how individuals FEEL (from public messages) but NOT private metrics.
+- SDM sees team mood + individual feelings. NOT hours worked or drain data.`;
 
 /** Tool declarations for Gemini function calling */
 const SLACK_TOOLS = [
@@ -186,6 +215,49 @@ const OUTLOOK_TOOLS = process.env.MS_GRAPH_TOKEN
     ]
   : [];
 
+/** Bloom wellness tool declarations */
+const BLOOM_TOOLS = [
+  {
+    name: 'bloom_update_config',
+    description: 'Configure team channel and working hours for Bloom wellness tracking.',
+    parameters: {
+      type: 'object',
+      properties: {
+        channel_id: { type: 'string', description: 'Slack channel ID.' },
+        channel_name: { type: 'string', description: 'Channel name to resolve.' },
+        working_hours_start: { type: 'number', description: 'Team default start hour (0-23).' },
+        working_hours_end: { type: 'number', description: 'Team default end hour (0-23).' },
+      },
+    },
+  },
+  {
+    name: 'bloom_generate_sentiment',
+    description: 'Generate an on-demand team mood/sentiment report by analyzing the configured channel.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'bloom_set_working_hours',
+    description: "Set the current user's personal working hours for wellness nudge timing.",
+    parameters: {
+      type: 'object',
+      properties: {
+        start_hour: { type: 'number', description: 'Start hour (0-23).' },
+        end_hour: { type: 'number', description: 'End hour (0-23).' },
+      },
+      required: ['start_hour', 'end_hour'],
+    },
+  },
+  {
+    name: 'bloom_opt_status',
+    description: 'Opt in or out of Bloom wellness tracking for the current user.',
+    parameters: {
+      type: 'object',
+      properties: { opted_out: { type: 'boolean', description: 'true=opt out, false=opt in' } },
+      required: ['opted_out'],
+    },
+  },
+];
+
 /**
  * @typedef {Object} AgentDeps
  * @property {import('@slack/web-api').WebClient} client
@@ -194,6 +266,8 @@ const OUTLOOK_TOOLS = process.env.MS_GRAPH_TOKEN
  * @property {string} threadTs
  * @property {string} messageTs
  * @property {string} [userToken]
+ * @property {string} [teamId]
+ * @property {string} [originalText]
  */
 
 /**
@@ -273,6 +347,10 @@ async function executeTool(name, args, deps) {
         return channels.map((c) => `#${c.name} (${c.id}): ${c.purpose?.value || ''}`).join('\n');
       }
       default:
+        // Try Bloom wellness tools
+        if (name.startsWith('bloom_')) {
+          return await executeBloomTool(name, args, deps);
+        }
         // Try Outlook tools
         if (name === 'outlook_get_events' && process.env.MS_GRAPH_TOKEN) {
           const now = new Date();
@@ -356,7 +434,7 @@ export async function runAgent(text, history = [], deps = undefined) {
 
   const contents = [...history, { role: 'user', parts: [{ text }] }];
 
-  const allDeclarations = [...SLACK_TOOLS, ...OUTLOOK_TOOLS, ...mcpToolDeclarations];
+  const allDeclarations = [...SLACK_TOOLS, ...BLOOM_TOOLS, ...OUTLOOK_TOOLS, ...mcpToolDeclarations];
   const tools = /** @type {any[]} */ ([{ functionDeclarations: allDeclarations }]);
 
   // Loop to handle tool calls (max 10 iterations to prevent runaway)
@@ -399,4 +477,86 @@ export async function runAgent(text, history = [], deps = undefined) {
 
   // Fallback if we hit max iterations
   return { responseText: "I'm having trouble completing that request. Could you try rephrasing?", history: contents };
+}
+
+// ======================== BLOOM TOOL EXECUTION ========================
+
+/**
+ * Execute Bloom wellness tool calls.
+ * @param {string} name
+ * @param {Record<string, any>} args
+ * @param {AgentDeps} [deps]
+ * @returns {Promise<string>}
+ */
+async function executeBloomTool(name, args, deps) {
+  const teamId = deps?.teamId || 'default';
+
+  switch (name) {
+    case 'bloom_update_config': {
+      const config = await getTeamConfig(teamId);
+
+      // Resolve channel ID
+      let channelId = args.channel_id || null;
+      if (!channelId && deps?.originalText) {
+        const match = deps.originalText.match(/<#(C[A-Z0-9]+)\|?[^>]*>/i);
+        if (match) channelId = match[1];
+      }
+      if (!channelId && args.channel_name && deps?.client) {
+        try {
+          const searchName = args.channel_name.replace(/^#/, '').toLowerCase().trim();
+          let cursor = undefined;
+          let found = null;
+          do {
+            const listRes = await deps.client.conversations.list({ types: 'public_channel,private_channel', exclude_archived: true, limit: 200, cursor });
+            found = (listRes.channels || []).find((ch) => ch.name.toLowerCase() === searchName);
+            if (found) break;
+            cursor = listRes.response_metadata?.next_cursor;
+          } while (cursor);
+          if (found) channelId = found.id;
+        } catch (e) { console.log(`[bloom] Channel lookup error: ${e.message}`); }
+      }
+
+      const updates = {};
+      if (channelId) updates.channelId = channelId;
+      if (args.channel_name) updates.channelName = args.channel_name;
+      if (args.working_hours_start !== undefined) updates.workingHoursStart = args.working_hours_start;
+      if (args.working_hours_end !== undefined) updates.workingHoursEnd = args.working_hours_end;
+      await updateTeamConfig(teamId, updates);
+
+      if (channelId && channelId !== config.channelId && global.onConfigureComplete) {
+        global.onConfigureComplete(teamId, channelId);
+      }
+
+      const merged = { ...config, ...updates };
+      return `Config updated. Channel: ${merged.channelId || 'not set'}, hours: ${merged.workingHoursStart || 9}-${merged.workingHoursEnd || 17}`;
+    }
+
+    case 'bloom_generate_sentiment': {
+      if (!deps?.client) return 'No Slack client available.';
+      const report = await generateTeamReport(deps.client, teamId);
+      if (!report) return 'No messages found to analyze. Ensure a channel is configured and has recent activity.';
+      try {
+        await deps.client.chat.postMessage({ channel: deps.channelId, thread_ts: deps.threadTs, ...report });
+        return 'Sentiment report generated and posted.';
+      } catch (e) {
+        return `Report generated but failed to post: ${e.message}`;
+      }
+    }
+
+    case 'bloom_set_working_hours': {
+      if (!deps?.userId) return 'No user context.';
+      await updateUserData(teamId, deps.userId, { workingHoursStart: args.start_hour, workingHoursEnd: args.end_hour });
+      return `Working hours set to ${args.start_hour}:00 - ${args.end_hour}:00.`;
+    }
+
+    case 'bloom_opt_status': {
+      if (!deps?.userId) return 'No user context.';
+      await updateUserData(teamId, deps.userId, { optedOut: args.opted_out });
+      if (!args.opted_out && global.startWellnessCron) global.startWellnessCron();
+      return args.opted_out ? 'Opted out of wellness tracking.' : 'Opted in to wellness tracking.';
+    }
+
+    default:
+      return `Unknown bloom tool: ${name}`;
+  }
 }

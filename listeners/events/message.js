@@ -58,7 +58,7 @@ export async function handleMessage({ client, context, event, logger, say, saySt
     });
 
     // Run the agent with deps for tool access
-    const deps = { client, userId, channelId, threadTs, messageTs: event.ts, userToken: context.userToken };
+    const deps = { client, userId, channelId, threadTs, messageTs: event.ts, userToken: context.userToken, teamId: context.teamId || event.team || 'default', originalText: text };
     const { responseText, history: newHistory } = await runAgent(text, existingHistory, deps);
 
     // Stream response in thread with feedback buttons
