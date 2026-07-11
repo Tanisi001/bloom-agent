@@ -48,11 +48,20 @@ sending messages, and managing canvases. Use them whenever they would help the u
 You have access to Jira tools (jira_get, jira_post, jira_put, jira_patch, jira_delete) \
 that can call any Jira REST API endpoint. Use them when users ask about projects, issues, \
 sprints, or anything Jira-related. Common paths:
-- /rest/api/3/project/search — list projects
+- /rest/api/3/project/search — list ALL projects (use this FIRST when unsure of project key)
 - /rest/api/3/search/jql — search issues (use "jql" query param)
 - /rest/api/3/issue/{key} — get issue details
 - /rest/api/3/issue — create issue (POST)
 - /rest/api/3/myself — current user info
+
+CRITICAL JIRA BEHAVIOR:
+- When a user mentions a project name (like "hackathon"), ALWAYS call /rest/api/3/project/search \
+FIRST to discover the actual project key. Project names and keys are often different \
+(e.g., name "My Hackathon" might have key "KAN" or "HACK").
+- If a JQL search returns empty/null, try listing all projects to find the right key, \
+then retry with the correct key.
+- NEVER give up after one failed search. Always try /rest/api/3/project/search as a fallback.
+- To list ALL issues across all projects: use JQL "order by created DESC" with no project filter.
 ALWAYS use these tools when users ask about Jira. Never say you can't access Jira.
 
 ## GITHUB TOOLS
@@ -440,7 +449,7 @@ export async function runAgent(text, history = [], deps = undefined) {
   // Loop to handle tool calls (max 10 iterations to prevent runaway)
   for (let i = 0; i < 10; i++) {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash-lite',
       config: { systemInstruction: SYSTEM_PROMPT, tools },
       contents,
     });
