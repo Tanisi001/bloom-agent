@@ -39,8 +39,9 @@ app.event('reaction_added', async ({ event, context }) => {
 
 app.action('wellness_opt_in', async ({ ack, body, client }) => {
   await ack();
-  const teamId = body.team?.id || 'default';
+  const teamId = body.team?.id || body.user?.team_id || body.enterprise?.id || 'default';
   const userId = body.user.id;
+  console.log(`[opt-in] user=${userId}, team=${teamId}`);
   await updateUserData(teamId, userId, { optedOut: false });
   await client.chat.postMessage({
     channel: body.channel.id,
@@ -51,8 +52,9 @@ app.action('wellness_opt_in', async ({ ack, body, client }) => {
 
 app.action('wellness_opt_out', async ({ ack, body, client }) => {
   await ack();
-  const teamId = body.team?.id || 'default';
+  const teamId = body.team?.id || body.user?.team_id || body.enterprise?.id || 'default';
   const userId = body.user.id;
+  console.log(`[opt-out] user=${userId}, team=${teamId}`);
   await updateUserData(teamId, userId, { optedOut: true });
   await client.chat.postMessage({
     channel: body.channel.id,

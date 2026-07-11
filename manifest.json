@@ -1,6 +1,6 @@
 {
   "display_information": {
-    "name": "Bloom",
+    "name": "Bloom Agent",
     "description": "Your team's wellness buddy — mood insights, break reminders, and good vibes.",
     "background_color": "#2eb67d"
   },
@@ -20,7 +20,7 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "Bloom",
+      "display_name": "Bloom Agent",
       "always_online": true
     }
   },

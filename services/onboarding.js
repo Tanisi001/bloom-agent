@@ -142,11 +142,6 @@ export async function greetTeamMembers(client, teamId, channelId) {
             type: 'section',
             text: { type: 'mrkdwn', text: `I've sent a friendly welcome to *${greetedUsers.length} team members* with opt-in/out options:\n\n${userList}` },
           },
-          { type: 'divider' },
-          {
-            type: 'context',
-            elements: [{ type: 'mrkdwn', text: `_Wellness tracking is now active. You'll receive team mood reports on your configured schedule._` }],
-          },
         ],
       });
     } catch (e) {

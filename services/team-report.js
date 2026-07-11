@@ -106,41 +106,10 @@ export async function generateTeamReport(client, teamId) {
 
   blocks.push({ type: 'divider' });
 
-  // Activity stats table (active hours + GitHub + Jira)
-  const activityRows = Object.entries(userActivities)
-    .sort(([, a], [, b]) => b.activeMinutes - a.activeMinutes)
-    .slice(0, 8);
-
-  if (activityRows.length > 0) {
-    blocks.push({
-      type: 'table',
-      column_settings: [
-        { is_wrapped: true },
-        { align: 'center' },
-        { align: 'center' },
-        { align: 'center' },
-      ],
-      rows: [
-        [
-          { type: 'raw_text', text: 'Member' },
-          { type: 'raw_text', text: 'Active (hrs)' },
-          { type: 'raw_text', text: 'Commits' },
-          { type: 'raw_text', text: 'Tickets' },
-        ],
-        ...activityRows.map(([userId, a]) => [
-          { type: 'raw_text', text: users[userId]?.name || userId.slice(0, 8) },
-          { type: 'raw_text', text: `${(a.activeMinutes / 60).toFixed(1)}` },
-          { type: 'raw_text', text: `${a.github.commits}` },
-          { type: 'raw_text', text: `${a.jira.ticketUpdates}` },
-        ]),
-      ],
-    });
-  }
-
   // Context footer
   blocks.push({
     type: 'context',
-    elements: [{ type: 'mrkdwn', text: `_${messages.length} messages | <#${config.channelId}> | GitHub/Jira data may be partial_` }],
+    elements: [{ type: 'mrkdwn', text: `_${messages.length} messages | <#${config.channelId}>_` }],
   });
 
   return { text: 'Team Mood & Activity Report', blocks };

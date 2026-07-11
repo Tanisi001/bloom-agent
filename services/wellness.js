@@ -19,7 +19,7 @@ import {
 import { isUserActive, getSessionDuration, computeDrainScore } from './activity-tracker.js';
 
 // Minimum gap between nudges (in minutes) to avoid spam
-const NUDGE_COOLDOWN_MINUTES = 30;
+const NUDGE_COOLDOWN_MINUTES = 2;
 
 // ======================== MAIN CRON HANDLER ========================
 
@@ -117,8 +117,8 @@ function determineNudgeType(sessionMinutes, isOffHours, drainScore) {
   // High drain — overworking
   if (drainScore >= 7) return 'high_drain';
 
-  // Long session without break (30+ min)
-  if (sessionMinutes >= 30 && sessionMinutes % 30 < 5) return 'break_reminder';
+  // Long session without break (2+ min)
+  if (sessionMinutes >= 2 && sessionMinutes % 2 < 5) return 'break_reminder';
 
   return null;
 }
