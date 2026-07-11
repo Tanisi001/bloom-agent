@@ -112,7 +112,7 @@ npm test            # Run unit tests
 
 ## 🏆 About
 
-This app was developed as part of [Codegeist 2025](https://devpost.com/software/copycat-la20vz).
+This app was developed as part of [Slack Agent Builder Challenge](https://slackhack.devpost.com/).
 
 ## 👥 Contributors
 
