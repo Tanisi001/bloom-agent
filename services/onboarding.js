@@ -16,7 +16,7 @@ import { GoogleGenAI } from '@google/genai';
 async function generateGreeting() {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.1-flash-lite',
     contents: [{ role: 'user', parts: [{ text: `Generate a warm, friendly onboarding message for a Slack wellness bot. Return JSON with:
 - "quote": a short inspiring health/wellness quote with author (not overused ones)
 - "body": 2-3 sentences welcoming them, explaining you'll remind them to hydrate, stretch, rest eyes, breathe. Make it feel like a caring friend, not corporate. Use Slack mrkdwn (*bold*). Include relevant emojis. Do NOT use ** or ###.` }] }],

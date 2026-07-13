@@ -198,7 +198,7 @@ async function generateNudge(nudgeType, context) {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       contents: [{ role: 'user', parts: [{ text: prompts[nudgeType] }] }],
     });
     return response.candidates?.[0]?.content?.parts?.[0]?.text || getFallbackNudge(nudgeType, context);
